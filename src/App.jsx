@@ -4,7 +4,6 @@ import {
   PRESETS,
   buildDataset,
   parseCsv,
-  recommendCrops,
 } from './lib/cropData'
 
 const PAGES = [
@@ -62,11 +61,49 @@ export default function App() {
     setPageIndex(0)
   }, [query, cropFilter])
 
-  function runRecommend(values = input) {
-    if (!data || !values) return
-    setResults(recommendCrops(data.profiles, values).slice(0, 5))
+
+async function runRecommend(values = input) {
+  if (!data || !values) return
+
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/predict', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(values),
+    })
+
+    const payload = await response.json()
+
+    if (!response.ok) {
+      throw new Error(payload.error || 'Prediction failed')
+    }
+
+    const mappedResults = payload.top_crops
+      .map((item) => {
+        const profile = data.profiles.find(
+          (crop) => crop.name.toLowerCase() === item.crop.toLowerCase()
+        )
+
+        if (!profile) return null
+
+        return {
+          ...profile,
+          match: item.probability,
+          breakdown: [],
+        }
+      })
+      .filter(Boolean)
+
+    setResults(mappedResults)
     setPage('recommend')
+  } catch (err) {
+    console.error('ML prediction error:', err)
+    alert(`Could not get prediction: ${err.message}`)
   }
+}
+
 
   if (error) {
     return (
@@ -108,12 +145,12 @@ export default function App() {
         <>
           <section className="hero">
             <div>
-              <p className="kicker">College project · frontend only</p>
+              <p className="kicker">College project · AI/ML powered</p>
               <h1>Recommend the right crop from soil and weather.</h1>
               <p className="lede">
-                KrishiChoice reads your local Crop_recommendation.csv in the browser.
-                Enter N, P, K, temperature, humidity, pH and rainfall to rank 22 crops
-                against real field samples — no backend required.
+                  KrishiChoice uses a trained Machine Learning model to recommend suitable crops.
+                  Enter N, P, K, temperature, humidity, pH and rainfall to get the top 5 crop
+                  recommendations based on your soil and weather conditions.
               </p>
               <div className="hero-actions">
                 <button className="primary" onClick={() => setPage('recommend')}>
@@ -148,12 +185,12 @@ export default function App() {
 
           <section className="section">
             <h2>How it works</h2>
-            <p className="muted">A simple similarity score, computed entirely on the client.</p>
+            <p className="muted">Crop recommendations powered by a trained Machine Learning model.</p>
             <div className="grid-3">
               <article className="step panel">
                 <span>1</span>
                 <h3>Load the CSV</h3>
-                <p className="muted">The app fetches public/Crop_recommendation.csv and builds a profile for every crop.</p>
+                <p className="muted">The app loads crop data from Crop_recommendation.csv to display crop information.</p>
               </article>
               <article className="step panel">
                 <span>2</span>
@@ -163,7 +200,7 @@ export default function App() {
               <article className="step panel">
                 <span>3</span>
                 <h3>Rank the crops</h3>
-                <p className="muted">Each crop is scored by how close your inputs sit to its sample mean and spread.</p>
+                <p className="muted">The trained Gaussian Naive Bayes model analyses your inputs and predicts the most suitable crops.</p>
               </article>
             </div>
           </section>
